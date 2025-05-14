@@ -3,6 +3,8 @@ import requests
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.font import Font
+from datetime import datetime
+import matplotlib.ticker as ticker
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -188,12 +190,25 @@ class NewsGUI:
             return
 
         for article in self.aggregator.articles:
-            display_text = f"Title: {article.get('title', 'N/A')}\n"
-            display_text += f"Source: {article.get('source', {}).get('name', 'N/A')}\n"
-            display_text += f"Author: {article.get('author', 'N/A')}\n"
-            display_text += f"Publication Date: {article.get('publication_date', 'N/A')}\n"
-            display_text += f"Content: {article.get('content', '')[:100]}...\n"
-            display_text += "-" * 50 + "\n"
+            raw_date = article.get('publication_date', 'Unknown')
+            if raw_date != 'Unknown':
+                try:
+                    dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                    formatted_date = dt.strftime('%Y-%m-%d %H:%M')
+                except ValueError:
+                    formatted_date = raw_date
+            else:
+                formatted_date = 'Unknown'
+
+            display_text = (
+                f"{'='*80}\n"
+                f"📰 Title: {article.get('title', 'N/A')}\n"
+                f"📢 Source: {article.get('source', {}).get('name', 'N/A')}\n"
+                f"✍️ Author: {article.get('author', 'Unknown')}\n"
+                f"📅 Published: {formatted_date}\n\n"
+                f"{article.get('content', '')[:300]}...\n"
+                f"{'='*80}\n\n"
+            )
             self.text_area.insert(tk.END, display_text)
 
     def visualize(self):
@@ -204,6 +219,7 @@ class NewsGUI:
 
         plt.figure(figsize=(10, 6))
         plt.bar(distribution.keys(), distribution.values(), color="#4CAF50")
+        plt.gca().yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
         plt.xticks(rotation=45)
         plt.xlabel("Sources")
         plt.ylabel("Number of Articles")
@@ -239,12 +255,7 @@ class TestNewsAggregator(unittest.TestCase):
         self.assertEqual(len(self.aggregator.articles), 2)
 
 if __name__ == "__main__":
-    # Replace with your actual News API key
     API_KEY = os.getenv("NEWS_API_KEY", "YOUR_API_KEY")
-    
     aggregator = NewsAggregator(API_KEY)
     gui = NewsGUI(aggregator)
     gui.run()
-
-    # Run unit tests
-    # unittest.main(argv=[''], exit=False)
