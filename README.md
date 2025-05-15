@@ -4,12 +4,12 @@ This Python application fetches current news articles from public APIs and suppl
 
 ## Features
 
-- ✅ News API integration
-- ✅ Web scraping of article content, author, and publication date
-- ✅ Data cleaning and deduplication
-- ✅ GUI built with Tkinter
-- ✅ Data visualisation using Matplotlib
-- ✅ Unit testing with `unittest`
+- News API integration
+- Web scraping of article content, author, and publication date
+- Data cleaning and deduplication
+- GUI built with Tkinter
+- Data visualisation using Matplotlib
+- Unit testing with `unittest`
 
 ## Requirements
 
