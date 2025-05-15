@@ -14,7 +14,7 @@ from functools import lru_cache
 
 class NewsAPIClient:
     def __init__(self, api_key):
-        self.api_key = "75e01f0496064d5683ff5abdc0783a10"
+        self.api_key = api_key
         self.base_url = "https://newsapi.org/v2/top-headlines"
 
     def fetch_news(self, category="", source="", page_size=10):
@@ -48,21 +48,18 @@ class WebScraper:
             response = requests.get(url, headers=self.headers, timeout=5)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Try to find article content
+
             content = soup.find('article') or soup.find('div', class_='content')
-            text = content.get_text(strip=True) if content else "Content not available"
-            
-            # Try to find author
+            text = content.get_text(strip=True) if content else ""
+
             author = soup.find('meta', {'name': 'author'})
             author = author['content'] if author else "Unknown"
-            
-            # Try to find publication date
+
             pub_date = soup.find('meta', {'property': 'article:published_time'})
             pub_date = pub_date['content'] if pub_date else "Unknown"
-            
+
             return {
-                'content': text[:500],  # Limit content length
+                'content': text[:500] if text else "",
                 'author': author,
                 'publication_date': pub_date
             }
@@ -78,14 +75,19 @@ class NewsAggregator:
 
     def aggregate(self, category="", source="", page_size=10):
         self.articles = self.api_client.fetch_news(category, source, page_size)
+        print(f"[DEBUG] Fetched {len(self.articles)} articles")
         for article in self.articles:
             if article.get('url'):
                 scraped_data = self.scraper.scrape_article(article['url'])
+
+                # Fallback to API content if scraping fails
+                if not scraped_data.get("content"):
+                    scraped_data["content"] = article.get("description") or article.get("content") or "Content not available"
+
                 article.update(scraped_data)
         self._clean_data()
 
     def _clean_data(self):
-        # Remove duplicates based on URL
         seen_urls = set()
         unique_articles = []
         for article in self.articles:
@@ -97,7 +99,6 @@ class NewsAggregator:
     def get_category_distribution(self):
         categories = defaultdict(int)
         for article in self.articles:
-            # NewsAPI doesn't provide category, so we'll use source as proxy
             source = article.get('source', {}).get('name', 'Unknown')
             categories[source] += 1
         return categories
@@ -108,65 +109,54 @@ class NewsGUI:
         self.root = tk.Tk()
         self.root.title("News Aggregator")
         self.root.geometry("900x700")
-        self.root.configure(bg="#f5f5f5")  # Light background color
+        self.root.configure(bg="#f5f5f5")
         self._setup_gui()
+        self.loading_label = tk.Label(self.root, text="", font=("Helvetica", 12), fg="blue", bg="#f5f5f5")
+        self.loading_label.pack(pady=5)
 
     def _setup_gui(self):
-        # Custom font
         title_font = Font(family="Helvetica", size=16, weight="bold")
         label_font = Font(family="Helvetica", size=12)
 
-        # Title
         title_label = tk.Label(self.root, text="News Aggregator", font=title_font, bg="#f5f5f5", fg="#333")
         title_label.pack(pady=10)
 
-        # Input Frame
         input_frame = ttk.Frame(self.root, padding=10)
         input_frame.pack(pady=10, fill="x")
 
-        # Category selection
         ttk.Label(input_frame, text="Category:", font=label_font).grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.category_var = tk.StringVar()
         categories = ["", "business", "entertainment", "general", "health", "science", "sports", "technology"]
         category_combobox = ttk.Combobox(input_frame, textvariable=self.category_var, values=categories, state="readonly")
         category_combobox.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
 
-        # Source selection
         ttk.Label(input_frame, text="Source (optional):", font=label_font).grid(row=1, column=0, sticky="w", padx=5, pady=5)
         self.source_var = tk.StringVar()
         source_entry = ttk.Entry(input_frame, textvariable=self.source_var)
         source_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
-        # Number of articles
         ttk.Label(input_frame, text="Number of Articles:", font=label_font).grid(row=2, column=0, sticky="w", padx=5, pady=5)
         self.num_articles_var = tk.IntVar(value=10)
         num_articles_entry = ttk.Entry(input_frame, textvariable=self.num_articles_var)
         num_articles_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
-        # Adjust column weights
         input_frame.columnconfigure(1, weight=1)
 
-        # Buttons Frame
         button_frame = ttk.Frame(self.root, padding=10)
         button_frame.pack(pady=10)
 
-        # Fetch button
         fetch_button = ttk.Button(button_frame, text="Fetch News", command=self.fetch_news)
         fetch_button.grid(row=0, column=0, padx=10)
 
-        # Visualize button
         visualize_button = ttk.Button(button_frame, text="Visualize Distribution", command=self.visualize)
         visualize_button.grid(row=0, column=1, padx=10)
 
-        # Article Display Frame
         display_frame = ttk.Frame(self.root, padding=10)
         display_frame.pack(pady=10, fill="both", expand=True)
 
-        # Article display
         self.text_area = tk.Text(display_frame, height=20, wrap="word", font=("Helvetica", 10))
         self.text_area.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
-        # Scrollbar
         scrollbar = ttk.Scrollbar(display_frame, command=self.text_area.yview)
         scrollbar.pack(side="right", fill="y")
         self.text_area.configure(yscrollcommand=scrollbar.set)
@@ -181,12 +171,13 @@ class NewsGUI:
             messagebox.showerror("Error", "Please select a category or provide a source.")
             return
 
+        self.loading_label.config(text="Fetching news, please wait...")
         threading.Thread(target=self._fetch_news_thread, args=(category, source, num_articles)).start()
 
     def _fetch_news_thread(self, category, source, num_articles):
         self.aggregator.aggregate(category, source, num_articles)
         if not self.aggregator.articles:
-            messagebox.showerror("Error", "No articles found!")
+            self.root.after(0, lambda: messagebox.showerror("Error", "No articles found!"))
             return
 
         for article in self.aggregator.articles:
@@ -211,6 +202,8 @@ class NewsGUI:
             )
             self.text_area.insert(tk.END, display_text)
 
+        self.root.after(0, lambda: self.loading_label.config(text=""))
+
     def visualize(self):
         distribution = self.aggregator.get_category_distribution()
         if not distribution:
@@ -230,9 +223,10 @@ class NewsGUI:
     def run(self):
         self.root.mainloop()
 
+# For unit testing (optional)
 class TestNewsAggregator(unittest.TestCase):
     def setUp(self):
-        self.aggregator = NewsAggregator("YOUR_API_KEY")  # Replace with actual API key
+        self.aggregator = NewsAggregator("75e01f0496064d5683ff5abdc0783a10")
 
     def test_api_fetch(self):
         articles = self.aggregator.api_client.fetch_news(category="technology")
@@ -255,7 +249,7 @@ class TestNewsAggregator(unittest.TestCase):
         self.assertEqual(len(self.aggregator.articles), 2)
 
 if __name__ == "__main__":
-    API_KEY = os.getenv("NEWS_API_KEY", "YOUR_API_KEY")
+    API_KEY = os.getenv("NEWS_API_KEY", "75e01f0496064d5683ff5abdc0783a10")
     aggregator = NewsAggregator(API_KEY)
     gui = NewsGUI(aggregator)
     gui.run()
