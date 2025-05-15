@@ -207,7 +207,7 @@ class NewsGUI:
                 f"✍️ Author: {article.get('author', 'Unknown')}\n"
                 f"📅 Published: {formatted_date}\n\n"
                 f"{article.get('content', '')[:300]}...\n"
-                f"{'='*80}\n\n"
+                f"{'='*100}\n\n"
             )
             self.text_area.insert(tk.END, display_text)
 
